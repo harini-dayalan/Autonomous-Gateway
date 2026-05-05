@@ -68,7 +68,7 @@ export async function POST(request: Request) {
       // ---------------------------------------------------------
       console.log('Using In-Memory/Local Fallback');
       
-      let db = { users: [], logins: [] };
+      let db: { users: any[]; logins: any[] } = { users: [], logins: [] };
       
       // Try to read from file if possible (local dev), otherwise stay in memory
       try {
