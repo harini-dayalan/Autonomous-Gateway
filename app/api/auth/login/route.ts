@@ -79,7 +79,7 @@ export async function POST(request: Request) {
         console.warn('File system is read-only or inaccessible.');
       }
 
-      let user = db.users.find((u: any) => u.email === email);
+      let user: any = db.users.find((u: any) => u.email === email);
       if (!user) {
         user = {
           id: `usr_${Date.now().toString(36)}`,
