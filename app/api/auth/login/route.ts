@@ -8,7 +8,7 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 // Only initialize if both keys exist and URL is a valid string starting with http
-const hasValidKeys = !!(supabaseUrl && supabaseKey && supabaseUrl.startsWith('http'));
+const hasValidKeys = !!(supabaseUrl && typeof supabaseUrl === 'string' && supabaseUrl.startsWith('http') && supabaseKey);
 const supabase = hasValidKeys ? createClient(supabaseUrl!, supabaseKey!) : null;
 
 // Fallback JSON DB location
