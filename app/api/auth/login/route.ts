@@ -63,14 +63,20 @@ export async function POST(request: Request) {
 
     } else {
       // ---------------------------------------------------------
-      // FALLBACK LOCAL JSON LOGIC (If keys aren't added yet)
+      // FALLBACK LOGIC (Memory-Safe for Vercel)
       // ---------------------------------------------------------
-      if (!fs.existsSync(DB_FILE)) {
-        fs.writeFileSync(DB_FILE, JSON.stringify({ users: [], logins: [] }, null, 2));
+      console.log('Using In-Memory/Local Fallback');
+      
+      let db = { users: [], logins: [] };
+      
+      // Try to read from file if possible (local dev), otherwise stay in memory
+      try {
+        if (fs.existsSync(DB_FILE)) {
+          db = JSON.parse(fs.readFileSync(DB_FILE, 'utf-8'));
+        }
+      } catch (e) {
+        console.warn('File system is read-only or inaccessible.');
       }
-
-      const dbData = fs.readFileSync(DB_FILE, 'utf-8');
-      const db = JSON.parse(dbData);
 
       let user = db.users.find((u: any) => u.email === email);
       if (!user) {
@@ -93,9 +99,14 @@ export async function POST(request: Request) {
       };
       db.logins.push(loginEvent);
 
-      fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
+      // Only try to write if we aren't on Vercel's read-only system
+      try {
+        fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
+      } catch (e) {
+        console.log('Skipping file write (Read-Only System)');
+      }
 
-      return NextResponse.json({ success: true, user, message: 'Saved to local JSON fallback. (Supabase keys missing)' }, { status: 200 });
+      return NextResponse.json({ success: true, user, message: 'Authenticated (In-Memory Fallback)' }, { status: 200 });
     }
 
   } catch (error: any) {
