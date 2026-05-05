@@ -12,7 +12,7 @@ export default function GlobeComponent() {
   useEffect(() => {
     // Generate random arcs for data requests
     const generateData = () => {
-      const arcs = [...Array(12).keys()].map(() => ({
+      const arcs = Array.from({ length: 12 }).map(() => ({
         startLat: (Math.random() - 0.5) * 160,
         startLng: (Math.random() - 0.5) * 360,
         endLat: 37.7749, // Target server (e.g., San Francisco)
@@ -22,7 +22,7 @@ export default function GlobeComponent() {
       setArcsData(arcs);
 
       // Generate random rings for intercepted PII leaks
-      const rings = [...Array(4).keys()].map(() => ({
+      const rings = Array.from({ length: 4 }).map(() => ({
         lat: (Math.random() - 0.5) * 160,
         lng: (Math.random() - 0.5) * 360,
         maxR: Math.random() * 10 + 5,
