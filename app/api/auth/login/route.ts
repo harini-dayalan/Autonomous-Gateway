@@ -13,6 +13,7 @@ const supabase = hasValidKeys ? createClient(supabaseUrl!, supabaseKey!) : null;
 
 // Fallback JSON DB location
 const DB_FILE = path.join(process.cwd(), 'database.json');
+const isVercel = process.env.VERCEL === '1';
 
 export async function POST(request: Request) {
   try {
@@ -71,7 +72,7 @@ export async function POST(request: Request) {
       
       // Try to read from file if possible (local dev), otherwise stay in memory
       try {
-        if (fs.existsSync(DB_FILE)) {
+        if (!isVercel && fs.existsSync(DB_FILE)) {
           db = JSON.parse(fs.readFileSync(DB_FILE, 'utf-8'));
         }
       } catch (e) {
@@ -101,7 +102,9 @@ export async function POST(request: Request) {
 
       // Only try to write if we aren't on Vercel's read-only system
       try {
-        fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
+        if (!isVercel) {
+          fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
+        }
       } catch (e) {
         console.log('Skipping file write (Read-Only System)');
       }
