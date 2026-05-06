@@ -40,6 +40,12 @@ export default function Dashboard() {
   const [erasingState, setErasingState] = useState(0);
   const [erasureCert, setErasureCert] = useState('');
 
+  // 5-Step Pipeline State
+  const [pipelineStep, setPipelineStep] = useState(0);
+  const [vaultMap, setVaultMap] = useState<{token:string; real:string; type:string}[]>([]);
+  const [aiResponse, setAiResponse] = useState('');
+  const [finalResponse, setFinalResponse] = useState('');
+
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 3000); };
 
   const loadModel = () => {
@@ -88,18 +94,86 @@ export default function Dashboard() {
 
   const handleShield = () => {
     setScanning(true);
+    setPipelineStep(1);
+    setAiResponse('');
+    setFinalResponse('');
+    const fpe = kernelSettings.fpeMode;
+
+    // Build vault mapping
+    const vault: {token:string; real:string; type:string}[] = [];
+    let out = rawPrompt;
+
+    if (policies.email) {
+      const emails = rawPrompt.match(/[\w.-]+@[\w.-]+\.\w+/g);
+      if (emails) emails.forEach(e => {
+        const tok = fpe ? 'alex.smith@example.net' : '[ENT_EMAIL_772]';
+        vault.push({ token: tok, real: e, type: 'EMAIL' });
+        out = out.replace(e, tok);
+      });
+    }
+    if (policies.ssn) {
+      const ssns = rawPrompt.match(/\d{3}-\d{2}-\d{4}/g);
+      if (ssns) ssns.forEach(s => {
+        const tok = fpe ? '982-11-0034' : '[ENT_SSN_119]';
+        vault.push({ token: tok, real: s, type: 'SSN' });
+        out = out.replace(s, tok);
+      });
+    }
+    if (policies.phone) {
+      const phones = rawPrompt.match(/\(?\d{3}\)?[-.\s]\d{3}[-.\s]\d{4}/g);
+      if (phones) phones.forEach(p => {
+        const tok = fpe ? '555-019-8372' : '[ENT_PHONE_334]';
+        vault.push({ token: tok, real: p, type: 'PHONE' });
+        out = out.replace(p, tok);
+      });
+    }
+    if (policies.ip) {
+      const ips = rawPrompt.match(/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/g);
+      if (ips) ips.forEach(ip => {
+        const tok = fpe ? '198.51.100.42' : '[ENT_IP_991]';
+        vault.push({ token: tok, real: ip, type: 'IP' });
+        out = out.replace(ip, tok);
+      });
+    }
+
+    // Step 1 → Step 2: Intercept & Vault (after 900ms)
     setTimeout(() => {
-      let out = rawPrompt;
-      const fpe = kernelSettings.fpeMode;
-      if (policies.email) out = out.replace(/[\w.-]+@[\w.-]+\.\w+/g, fpe ? 'alex.smith@example.net' : '[ENT_EMAIL_772]');
-      if (policies.ssn) out = out.replace(/\d{3}-\d{2}-\d{4}/g, fpe ? '982-11-0034' : '[ENT_SSN_119]');
-      if (policies.phone) out = out.replace(/\(?\d{3}\)?[-.\s]\d{3}[-.\s]\d{4}/g, fpe ? '555-019-8372' : '[ENT_PHONE_334]');
-      if (policies.ip) out = out.replace(/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/g, fpe ? '198.51.100.42' : '[ENT_IP_991]');
       setShielded(out);
+      setVaultMap(vault);
       setScanning(false);
+      setPipelineStep(2);
       addLog('PROMPT_SCAN', fpe ? 'MULTI-PII (FPE)' : 'MULTI-PII', 'TOKENIZED', 'HIGH');
-      showToast(fpe ? '✓ Prompt shielded using Format-Preserving Encryption' : '✓ Prompt shielded successfully');
+      showToast(fpe ? '✓ PII vaulted & FPE applied' : '✓ PII vaulted & tokenized');
     }, 900);
+
+    // Step 3: AI Processing (after 2.5s)
+    setTimeout(() => {
+      setPipelineStep(3);
+    }, 2500);
+
+    // Step 4: AI Response with fake data (after 4.5s)
+    setTimeout(() => {
+      const simResponse = fpe
+        ? `Based on the analysis of alex.smith@example.net (SSN: 982-11-0034), the risk score is MODERATE (62/100). The account shows 3 active sessions and no anomalies detected. Recommended action: Continue monitoring with standard protocol.`
+        : `Based on the analysis of [ENT_EMAIL_772] (SSN: [ENT_SSN_119]), the risk score is MODERATE (62/100). The account shows 3 active sessions and no anomalies detected. Recommended action: Continue monitoring with standard protocol.`;
+      setAiResponse(simResponse);
+      setPipelineStep(4);
+      addLog('LLM_RESPONSE', 'GPT-4', 'RECEIVED', 'LOW');
+    }, 4500);
+
+    // Step 5: De-tokenize response (after 6s)
+    setTimeout(() => {
+      let restored = fpe
+        ? `Based on the analysis of alex.smith@example.net (SSN: 982-11-0034), the risk score is MODERATE (62/100). The account shows 3 active sessions and no anomalies detected. Recommended action: Continue monitoring with standard protocol.`
+        : `Based on the analysis of [ENT_EMAIL_772] (SSN: [ENT_SSN_119]), the risk score is MODERATE (62/100). The account shows 3 active sessions and no anomalies detected. Recommended action: Continue monitoring with standard protocol.`;
+      vault.forEach(v => {
+        restored = restored.replace(v.token, v.real);
+      });
+      setFinalResponse(restored);
+      setPipelineStep(5);
+      addLog('DE_TOKENIZE', 'VAULT_REVERSE', 'RESTORED', 'LOW');
+      showToast('✓ Full pipeline complete — real data restored for user');
+    }, 6000);
   };
 
   const handleCSVScan = () => {
@@ -381,20 +455,84 @@ export default function Dashboard() {
                   {scanning ? 'Shielding...' : 'Shield & Send to LLM'}
                 </button>
               </div>
-              {shielded && (
+              {/* STEP PROGRESS BAR */}
+              {pipelineStep > 0 && (
                 <div className="glass-card rounded-2xl p-6 animate-fadeIn">
-                  <h4 className="font-semibold text-sm mb-3">Token Map</h4>
-                  <div className="space-y-2">
-                    {[{ token: '[ENT_EMAIL_772]', original: '*** redacted ***', type: 'EMAIL' },
-                      { token: '[ENT_SSN_119]', original: '*** redacted ***', type: 'SSN' }].map(t => (
-                      <div key={t.token} className="flex items-center gap-3 p-3 rounded-xl" style={{ background: 'rgba(167,139,250,0.06)' }}>
-                        <span className="font-mono text-xs px-2 py-1 rounded-lg" style={{ background: 'rgba(167,139,250,0.12)', color: '#a78bfa' }}>{t.token}</span>
-                        <span className="text-xs" style={{ color: '#948e9d' }}>→</span>
-                        <span className="text-xs font-mono" style={{ color: '#cac4d4' }}>{t.original}</span>
-                        <span className="ml-auto text-xs px-2 py-0.5 rounded-full" style={{ background: 'rgba(167,139,250,0.1)', color: '#cebdff' }}>{t.type}</span>
+                  <h4 className="font-semibold text-sm mb-4 flex items-center gap-2">
+                    <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#a78bfa' }}>timeline</span>
+                    Pipeline Progress
+                  </h4>
+                  <div className="flex items-center gap-1 mb-6">
+                    {['Intercept', 'Vault & Tokenize', 'Send to AI', 'AI Response', 'De-tokenize'].map((label, i) => (
+                      <div key={label} className="flex-1 flex flex-col items-center gap-2">
+                        <div className="w-full h-2 rounded-full transition-all duration-500" style={{ background: pipelineStep > i ? 'linear-gradient(90deg, #a78bfa, #cebdff)' : 'rgba(167,139,250,0.1)' }}></div>
+                        <span className="text-[10px] font-semibold" style={{ color: pipelineStep > i ? '#cebdff' : '#494552' }}>{label}</span>
                       </div>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {/* STEP 2: VAULT MAP */}
+              {pipelineStep >= 2 && vaultMap.length > 0 && (
+                <div className="glass-card rounded-2xl p-6 animate-fadeIn">
+                  <h4 className="font-semibold text-sm mb-3 flex items-center gap-2">
+                    <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#a78bfa' }}>enhanced_encryption</span>
+                    Step 2: Secure Vault — Token Mapping
+                  </h4>
+                  <p className="text-xs mb-4" style={{ color: '#948e9d' }}>Original PII is stored securely. Only tokens/FPE data leave the system.</p>
+                  <div className="space-y-2">
+                    {vaultMap.map((v, i) => (
+                      <div key={i} className="flex items-center gap-3 p-3 rounded-xl" style={{ background: 'rgba(167,139,250,0.06)' }}>
+                        <span className="font-mono text-xs px-2 py-1 rounded-lg" style={{ background: 'rgba(255,180,171,0.12)', color: '#ffb4ab' }}>{v.real}</span>
+                        <span className="material-symbols-outlined" style={{ fontSize: 14, color: '#948e9d' }}>arrow_forward</span>
+                        <span className="font-mono text-xs px-2 py-1 rounded-lg" style={{ background: 'rgba(167,139,250,0.12)', color: '#a78bfa' }}>{v.token}</span>
+                        <span className="ml-auto text-xs px-2 py-0.5 rounded-full" style={{ background: 'rgba(167,139,250,0.1)', color: '#cebdff' }}>{v.type}</span>
+                        <span className="material-symbols-outlined" style={{ fontSize: 14, color: '#4caf50' }}>lock</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* STEP 3: SENDING TO AI */}
+              {pipelineStep === 3 && (
+                <div className="glass-card rounded-2xl p-6 animate-fadeIn">
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-full border-2 border-t-violet-400 border-violet-400/20 animate-spin"></div>
+                    <div>
+                      <p className="font-semibold text-sm">Step 3: Sending sanitized prompt to external LLM...</p>
+                      <p className="text-xs" style={{ color: '#948e9d' }}>Only tokenized/FPE data is transmitted. Zero real PII leaves the system.</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* STEP 4: AI RESPONSE */}
+              {pipelineStep >= 4 && aiResponse && (
+                <div className="glass-card rounded-2xl p-6 animate-fadeIn">
+                  <h4 className="font-semibold text-sm mb-3 flex items-center gap-2">
+                    <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#dbc839' }}>psychology</span>
+                    Step 4: LLM Response (Contains Fake/Token Data)
+                  </h4>
+                  <div className="font-mono text-sm p-4 rounded-xl border" style={{ background: '#0f0d14', borderColor: 'rgba(219,200,57,0.2)', color: 'rgba(219,200,57,0.8)', whiteSpace: 'pre-wrap' }}>
+                    {aiResponse}
+                  </div>
+                  <p className="text-xs mt-2" style={{ color: '#948e9d' }}>⚠ This response contains fake data — the AI never saw any real PII.</p>
+                </div>
+              )}
+
+              {/* STEP 5: DE-TOKENIZED FINAL RESPONSE */}
+              {pipelineStep >= 5 && finalResponse && (
+                <div className="glass-card rounded-2xl p-6 animate-fadeIn border" style={{ borderColor: 'rgba(76,175,80,0.3)' }}>
+                  <h4 className="font-semibold text-sm mb-3 flex items-center gap-2">
+                    <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#4caf50' }}>verified</span>
+                    Step 5: Final Response (Real Data Restored for User)
+                  </h4>
+                  <div className="font-mono text-sm p-4 rounded-xl border" style={{ background: '#0f0d14', borderColor: 'rgba(76,175,80,0.2)', color: 'rgba(76,175,80,0.9)', whiteSpace: 'pre-wrap' }}>
+                    {finalResponse}
+                  </div>
+                  <p className="text-xs mt-2" style={{ color: '#4caf50' }}>✅ The employee sees the correct response with real data. The AI never saw any real PII. Full audit trail logged.</p>
                 </div>
               )}
 
